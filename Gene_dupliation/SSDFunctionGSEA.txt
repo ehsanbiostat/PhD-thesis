@@ -1,0 +1,6200 @@
+
+R version 3.2.2 (2015-08-14) -- "Fire Safety"
+Copyright (C) 2015 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> 
+> 
+> #################################################################
+> #
+> # Deduce function of APs based on highly similar genes, gene score correlation, and GSEA
+> #
+> #################################################################
+> 
+> library(igraph)
+> library(foreach)
+> library(doMC)
+> options(width = 200)
+> # registerDoMC(2)
+> k = 6
+> condition.names = read.table("/ngsprojects/iwt/ehsab/Gene_duplication/Integrated_CORNET2.0/condition_name.txt", header = T)
+> NAME = names(table(condition.names))
+> NAME.spe = NAME[k]
+> source("/ngsprojects/iwt/ehsab/Gene_duplication/Scripts/General/myImagePlot.R")
+> source("/ngsprojects/iwt/ehsab/Gene_duplication/Scripts/General/myImagePlot_sym.R")
+> ref = read.table("/ngsprojects/iwt/ehsab/Gene_duplication/Integrated_CORNET2.0/Reference_SD.txt", header = T)
+> rownames(ref) = ref[,1]
+> 
+> 
+> LeafRoot = read.table("/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/Genes/Module/AT3G19710_Leaf_90.txt")
+> Root = read.table("/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/Genes/Module/AT1G50090_Root_90.txt")
+> SSDRoot = as.character(read.table("/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/Genes/SSDRootGenes.txt")[,2])
+> SSDRootLeaf = as.character(read.table("/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/Genes/SSDRootLeafGenes.txt")[,2])
+> 
+> 
+> 
+> Leaf = read.table("/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/Genes/Module/Leaf_90.txt")
+> Pollen = read.table("/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/Genes/Module/Pollen_90.txt")
+> SSDPollen = as.character(read.table("/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/Genes/SSDPollenGenes.txt")[,2])
+> SSDPollenLeaf = as.character(read.table("/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/Genes/SSDPollenLeafGenes.txt")[,2])
+> 
+> 
+> PollenRef = ref[as.character(Pollen[,1]), 2]
+> LeafRef = ref[as.character(Leaf[,1]), 2]
+> RootRef = ref[as.character(Root[,1]), 2]
+> LeafRootRef = ref[as.character(LeafRoot[,1]), 2]
+> 
+> 
+> 
+> 
+> 
+> 
+> ##################################
+> # Gene score as GSEA scores
+> ##################################
+> 
+> SSDPollenRef = ref[SSDPollen, 2]
+> SSDLeafRef = ref[SSDPollenLeaf, 2]
+> SSDRootRef = ref[SSDRoot, 2]
+> SSDLeafRootRef = ref[SSDRootLeaf, 2]
+> 
+> 
+> GeneScore = function(Ref, AnchRef, Anch, module) { # Generate gene score for anchorpoints and genes within the module
++ 	GeneScore = matrix(NA, 19285, length(AnchRef))
++ 	j = 0
++ 	for(i in AnchRef) {
++ 		j = j + 1
++ 		load(paste("/ngsprojects/iwt/ehsab/Gene_duplication/Results/SA/Gene_score/Compendium_wise/development/Raw/G",AnchRef[j],".RData", sep = ""))
++ 		GeneScore[,j] = gene_scores[,1]
++ 	}
++ 	colnames(GeneScore) = as.character(Anch)
++ 	rownames(GeneScore) = as.character(ref[,1])
++ 	GeneScore = as.data.frame(GeneScore)
++ 	GeneScore["Gene"] = rownames(GeneScore)
++ 	return(GeneScore)
++ }
+> 
+> GeneScoreRoot = GeneScore(RootRef, SSDRootRef, SSDRoot, Root)
+> GeneScoreLeafRoot = GeneScore(LeafRootRef, SSDLeafRootRef, SSDRootLeaf, LeafRoot)
+> 
+> GeneScorePollen = GeneScore(PollenRef, SSDPollenRef, SSDPollen, Pollen)
+> GeneScoreLeaf = GeneScore(LeafRef, SSDLeafRef, SSDPollenLeaf, Leaf)
+> 
+> # ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+> # GO analysis
+> # ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+> library(igraph)
+> library(foreach)
+> library(doMC)
+> # registerDoMC(2)
+> library(ape)
+> options(width = 200)
+> 
+> go = read.delim("/ngsprojects/iwt/ehsab/Prioritization/prioritization/Combined_Network/New/GO_OCT2015.txt", header = F)
+> clas = c("C", "F", "P")
+> k = c(2,3)
+> go = go[go[, 4] %in% clas[k], ]
+> go.limited = go[!(go$V2 %in%  rownames(data.frame(sort(table(as.matrix(go$V2)), decreasing=T)[1:20]))),]
+> goMap = go[!(duplicated(go[,c(2:3)])),]
+> # go = go[go[, 4] == clas[k] & (go[, 5] %in% c("EXP", "IDA","IPI", "IMP", "IGI", "IEP")), ] # only experimental evidence codes
+> 
+> 
+> 
+> 
+> 
+> # ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+> # GSEA analysis
+> # ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+> library(piano)
+> # myGsc = loadGSC(as.matrix(go.limited[, c("V1", "V2")]))
+> registerDoMC(20)
+> 
+> 
+> GSEA = function(Scores, method, FDR, module, TOP) { #Performs GSEA 
++ 	T = foreach (i = 1:c(ncol(Scores) - 1)) %dopar% {
++ 		print(i)
++ 		if(is.na(TOP)) {
++ 			myStats = Scores[,i]
++ 			names(myStats) = as.character(rownames(Scores))
++ 		} else {
++ 			select = which(rank(-Scores[,i]) <= TOP)
++ 			GOSelect = unique(as.character(go.limited[go.limited$V1 %in% rownames(Scores)[select],"V3"]))
++ 			go.limitedSelect = go.limited[as.character(go.limited$V3) %in% GOSelect,]
++ 			GeneSelect = unique(as.character(go.limitedSelect[,1]))
++ 			myStats = Scores[rownames(Scores) %in% GeneSelect,i]
++ 			names(myStats) = as.character(rownames(Scores)[rownames(Scores) %in% GeneSelect])
++ 			myGsc = loadGSC(as.matrix(go.limitedSelect[, c("V1", "V2")]))
++ 			# select = which(Scores[,i] > 0)
++ 			# myStats = 1/(1-Scores[select, i])
++ 			# names(myStats) = as.character(rownames(Scores)[select])
++ 		}
++ 		gsaRes <- runGSA(myStats, gsc=myGsc, geneSetStat = method, gsSizeLim=c(5,500), ncpus=1)
++ 		gsaRes
++ 	}
++ 	
++ 	GSAtable = lapply(T, GSAsummaryTable)
++ 	
++ 	final = foreach (i = 1:length(GSAtable), .combine = rbind) %dopar% {
++ 		print(i)
++ 		x = GSAtable[[i]]
++ 		x = x[x[, "p adj (non-dir.)"] < FDR,]
++ 		if(nrow(x) > 0) x["Gene"] = colnames(Scores)[i]
++ 		if(nrow(x) > 0) x[, c("Name", "Genes (tot)", "p adj (non-dir.)", "Gene")]
++ 	}
++ 	final["module"] = module
++ 	return(final)
++ }
+> 
+> GSEAPollen = GSEA(GeneScorePollen	, "mean", 0.1, "Pollen", TOP = 50)
+[1] 1
+[1] 2
+[1] 3
+[1] 4
+[1] 5
+[1] 6
+[1] 7
+[1] 8
+Checking arguments...[1] 9
+[1] 10
+[1] 11
+[1] 12
+done!
+Checking arguments...Checking arguments...Checking arguments...[1] 13
+[1] 14
+Checking arguments...Checking arguments...[1] 15
+done!
+Calculating gene set statistics...[1] 16
+done!
+Checking arguments...[1] 17
+done!
+Checking arguments...[1] 18
+Calculating gene set statistics...done!
+Calculating gene set significance...Calculating gene set statistics...Checking arguments...[1] 19
+Calculating gene set statistics...[1] 20
+Checking arguments...Checking arguments...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...Checking arguments...Checking arguments...Checking arguments...done!
+Checking arguments...Calculating gene set statistics...Checking arguments...done!
+Checking arguments...Calculating gene set significance...done!
+Checking arguments...Checking arguments...Calculating gene set statistics...done!
+Calculating gene set statistics...Checking arguments...done!
+done!
+done!
+Calculating gene set statistics...Calculating gene set statistics...done!
+done!
+done!
+done!
+done!
+Calculating gene set significance...Calculating gene set statistics...Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+done!
+Calculating gene set statistics...Calculating gene set statistics...Calculating gene set statistics...done!
+Calculating gene set significance...Calculating gene set statistics...done!
+Calculating gene set significance...Calculating gene set statistics...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+done!
+Calculating gene set statistics...Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 28
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 26
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 24
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 40
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 39
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 38
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 36
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 21
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 27
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 30
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 34
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 31
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 33
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 22
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 35
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 37
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 25
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 23
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 29
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 32
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 59
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 48
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 46
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 60
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 44
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 56
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 50
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 58
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 41
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 51
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 53
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 42
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 47
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 57
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 54
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 45
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 79
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 43
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 52
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 80
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 55
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 49
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 71
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 61
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 64
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 68
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 66
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 62
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 70
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 67
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 78
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 65
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 99
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 76
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 63
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 91
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 73
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 77
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 81
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 100
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 90
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 72
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 75
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 74
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 82
+Checking arguments...done!
+Adjusting for multiple testing...done!
+[1] 69
+done!
+Calculating gene set statistics...done!
+Calculating gene set significance...Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 86
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 88
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 87
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 94
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 84
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 83
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 93
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 98
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 92
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 111
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 85
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 97
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 102
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 89
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 119
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 110
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 120
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 96
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 106
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 101
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 103
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 108
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 107
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 95
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 104
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 113
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 130
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 122
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 118
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 117
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 105
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 114
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 131
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 109
+Checking arguments...done!
+Calculating gene set statistics...done!
+Adjusting for multiple testing...done!
+[1] 112
+done!
+Calculating gene set significance...Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 126
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 140
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 121
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 139
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 116
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 124
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 115
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 123
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 127
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 159
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 133
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 138
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 125
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 128
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 134
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 137
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 146
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 129
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 142
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 160
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 150
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 141
+Checking arguments...done!
+Calculating gene set statistics...done!
+Adjusting for multiple testing...done!
+[1] 132
+done!
+Calculating gene set significance...Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 151
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 144
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 179
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 136
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 135
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 147
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 162
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 143
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 153
+done!
+Adjusting for multiple testing...done!
+[1] 154
+Checking arguments...Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 166
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 149
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 158
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 171
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 145
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 148
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 170
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 199
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 161
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 152
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 157
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 180
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 164
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 155
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 182
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 167
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 163
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 173
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 191
+done!
+Adjusting for multiple testing...done!
+[1] 169
+Checking arguments...Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 186
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 178
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 156
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 177
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 168
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 190
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 219
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 174
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 202
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 184
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 165
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 181
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 200
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 172
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 175
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 206
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 187
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 193
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 239
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 189
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 183
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 197
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 198
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 211
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 204
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 185
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 210
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 220
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 176
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 222
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 201
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 188
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 226
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 207
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 195
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 194
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 221
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 192
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 203
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 217
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 213
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 259
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 205
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 218
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 209
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 242
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 224
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 240
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 230
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 231
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 208
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 279
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 214
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 241
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 196
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 233
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 246
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 227
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 215
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 237
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 238
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 229
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 212
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 223
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 225
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 260
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 262
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 250
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 244
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 251
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 261
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 258
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 253
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 232
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 266
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 247
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 216
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 257
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 245
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 228
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 235
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 249
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 234
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 264
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 282
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 278
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 270
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 252
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 280
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 267
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 271
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 273
+done!
+Adjusting for multiple testing...done!
+[1] 236
+Checking arguments...Checking arguments...done!
+done!
+Calculating gene set statistics...Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 281
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 243
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 248
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 286
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 265
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 277
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 254
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 255
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 269
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 256
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+Adjusting for multiple testing...done!
+done!
+[1] 284
+[1] 290
+Checking arguments...done!
+Calculating gene set statistics...Checking arguments...done!
+Calculating gene set significance...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 272
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 287
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 268
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 285
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 263
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 289
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 275
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 274
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 276
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 288
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 283
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 1
+[1] 21
+[1] 41
+[1] 61
+[1] 81
+[1] 101
+[1] 121
+[1] 2
+[1] 141
+[1] 22
+[1] 42
+[1] 161
+[1] 62
+[1] 82
+[1] 181
+[1] 102
+[1] 201
+[1] 221
+[1] 241
+[1] 261
+[1] 122
+[1] 281
+[1] 142
+[1] 3
+[1] 162
+[1] 23
+[1] 43
+[1] 182
+[1] 63
+[1] 202
+[1] 222
+[1] 242
+[1] 83
+[1] 262
+[1] 282
+[1] 103
+[1] 123
+[1] 4
+[1] 143
+[1] 24
+[1] 44
+[1] 64
+[1] 163
+[1] 84
+[1] 183
+[1] 203
+[1] 104
+[1] 5
+[1] 223
+[1] 243
+[1] 25
+[1] 263
+[1] 283
+[1] 45
+[1] 124
+[1] 65
+[1] 85
+[1] 144
+[1] 105
+[1] 164
+[1] 6
+[1] 125
+[1] 184
+[1] 204
+[1] 26
+[1] 145
+[1] 224
+[1] 46
+[1] 244
+[1] 165
+[1] 264
+[1] 66
+[1] 284
+[1] 86
+[1] 185
+[1] 205
+[1] 106
+[1] 225
+[1] 245
+[1] 265
+[1] 126
+[1] 285
+[1] 7
+[1] 146
+[1] 166
+[1] 27
+[1] 186
+[1] 47
+[1] 206
+[1] 226
+[1] 246
+[1] 266
+[1] 67
+[1] 286
+[1] 87
+[1] 107
+[1] 8
+[1] 127
+[1] 28
+[1] 48
+[1] 147
+[1] 167
+[1] 68
+[1] 88
+[1] 187
+[1] 108
+[1] 207
+[1] 227
+[1] 247
+[1] 267
+[1] 128
+[1] 287
+[1] 9
+[1] 29
+[1] 148
+[1] 49
+[1] 168
+[1] 69
+[1] 89
+[1] 188
+[1] 109
+[1] 208
+[1] 228
+[1] 129
+[1] 248
+[1] 268
+[1] 288
+[1] 149
+[1] 10
+[1] 169
+[1] 189
+[1] 30
+[1] 209
+[1] 229
+[1] 249
+[1] 269
+[1] 289
+[1] 50
+[1] 70
+[1] 90
+[1] 110
+[1] 11
+[1] 31
+[1] 130
+[1] 51
+[1] 71
+[1] 150
+[1] 91
+[1] 111
+[1] 170
+[1] 190
+[1] 131
+[1] 210
+[1] 230
+[1] 250
+[1] 12
+[1] 270
+[1] 151
+[1] 290
+[1] 32
+[1] 52
+[1] 171
+[1] 72
+[1] 191
+[1] 92
+[1] 211
+[1] 231
+[1] 251
+[1] 112
+[1] 271
+[1] 132
+[1] 152
+[1] 13
+[1] 172
+[1] 33
+[1] 192
+[1] 212
+[1] 53
+[1] 232
+[1] 252
+[1] 272
+[1] 73
+[1] 93
+[1] 113
+[1] 14
+[1] 34
+[1] 133
+[1] 153
+[1] 54
+[1] 173
+[1] 193
+[1] 74
+[1] 213
+[1] 233
+[1] 253
+[1] 273
+[1] 94
+[1] 15
+[1] 114
+[1] 35
+[1] 55
+[1] 134
+[1] 75
+[1] 154
+[1] 95
+[1] 174
+[1] 16
+[1] 194
+[1] 115
+[1] 214
+[1] 36
+[1] 234
+[1] 56
+[1] 135
+[1] 254
+[1] 76
+[1] 274
+[1] 155
+[1] 96
+[1] 175
+[1] 116
+[1] 195
+[1] 215
+[1] 235
+[1] 255
+[1] 275
+[1] 136
+[1] 156
+[1] 17
+[1] 37
+[1] 176
+[1] 196
+[1] 216
+[1] 236
+[1] 256
+[1] 57
+[1] 276
+[1] 77
+[1] 97
+[1] 117
+[1] 137
+[1] 18
+[1] 38
+[1] 157
+[1] 177
+[1] 58
+[1] 197
+[1] 78
+[1] 217
+[1] 237
+[1] 257
+[1] 277
+[1] 19
+[1] 98
+[1] 39
+[1] 59
+[1] 118
+[1] 79
+[1] 99
+[1] 138
+[1] 119
+[1] 139
+[1] 158
+[1] 20
+[1] 159
+[1] 178
+[1] 179
+[1] 198
+[1] 199
+[1] 218
+[1] 219
+[1] 40
+[1] 239
+[1] 238
+[1] 259
+[1] 258
+[1] 279
+[1] 60
+[1] 278
+[1] 80
+[1] 100
+[1] 120
+[1] 140
+[1] 160
+[1] 180
+[1] 200
+[1] 220
+[1] 240
+[1] 260
+[1] 280
+> GSEAPollenLeaf = GSEA(GeneScoreLeaf, "mean", 0.1, "Leaf", TOP = 50)
+[1] 1
+[1] 2
+[1] 3
+[1] 4
+[1] 5
+[1] 6
+[1] 7
+[1] 8
+[1] 9
+[1] 10
+[1] 11
+[1] 12
+[1] 13
+Checking arguments...[1] 14
+Checking arguments...[1] 15
+Checking arguments...[1] 16
+Checking arguments...Checking arguments...[1] 17
+[1] 18
+[1] 19
+Checking arguments...done!
+[1] 20
+Calculating gene set statistics...Checking arguments...done!
+Checking arguments...Calculating gene set statistics...Checking arguments...done!
+Checking arguments...Calculating gene set statistics...done!
+done!
+Calculating gene set significance...Calculating gene set statistics...Checking arguments...done!
+Checking arguments...Calculating gene set statistics...Checking arguments...done!
+Calculating gene set significance...done!
+Checking arguments...Calculating gene set statistics...Checking arguments...Checking arguments...done!
+Calculating gene set significance...Checking arguments...Checking arguments...Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Checking arguments...Calculating gene set statistics...done!
+Calculating gene set statistics...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set statistics...done!
+done!
+done!
+done!
+Calculating gene set significance...Calculating gene set statistics...Calculating gene set statistics...Calculating gene set statistics...done!
+done!
+Calculating gene set significance...Calculating gene set statistics...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+done!
+Calculating gene set statistics...Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+done!
+Calculating gene set significance...Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 24
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 35
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 26
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 38
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 22
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 28
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 30
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 21
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 29
+Checking arguments...done!
+Adjusting for multiple testing...done!
+[1] 39
+done!
+Calculating gene set statistics...done!
+Calculating gene set significance...Checking arguments...done!
+Adjusting for multiple testing...done!
+[1] 23
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 37
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 40
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 34
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 32
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 36
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 33
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 25
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 31
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 27
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 55
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 46
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 42
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 43
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 44
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 48
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 50
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 60
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 49
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 58
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 45
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 57
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 53
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 59
+Checking arguments...done!
+Calculating gene set statistics...done!
+Adjusting for multiple testing...done!
+[1] 56
+done!
+Calculating gene set significance...Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 41
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 54
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 52
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 51
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 47
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 62
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 75
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 66
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 78
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 77
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 68
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 65
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 63
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 70
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 80
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 69
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 73
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 64
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 61
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 79
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 76
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 74
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 67
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 71
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 72
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 95
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 82
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 86
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 97
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 85
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 90
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 88
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 98
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 83
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 100
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 81
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 89
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 96
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 94
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 84
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 93
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 99
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 91
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 92
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 115
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 87
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 106
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 102
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 103
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+Adjusting for multiple testing...done!
+done!
+[1] 117
+[1] 105
+Checking arguments...Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 120
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 110
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 118
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 101
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 109
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 114
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 116
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 108
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 113
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 111
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 104
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 119
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 112
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 107
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 122
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 126
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 130
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 135
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 123
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 136
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 137
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 125
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 129
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 121
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 139
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 134
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 140
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 138
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 131
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 133
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 128
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 127
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 132
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 150
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 146
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 124
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 155
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 142
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 143
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 141
+Checking arguments...done!
+Adjusting for multiple testing...done!
+[1] 145
+done!
+Calculating gene set statistics...Checking arguments...done!
+Calculating gene set significance...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 157
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 149
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 156
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 159
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 154
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 158
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 175
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 170
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 166
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 147
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 152
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 153
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 148
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 151
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 160
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 162
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 144
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 163
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 165
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 177
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 161
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 176
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 179
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 190
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 195
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 174
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 169
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 178
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 186
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 167
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 172
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 173
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 168
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 182
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 180
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 164
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 183
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 197
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 181
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 185
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 210
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 199
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 189
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 196
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 171
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 215
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 198
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 192
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 187
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 203
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 206
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 202
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 193
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 194
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 201
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 188
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 217
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 205
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 230
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 184
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 209
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 200
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 216
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 235
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 212
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 223
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 218
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 219
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 226
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 207
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 191
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 222
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 214
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 213
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 221
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 204
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 208
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 225
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 237
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 229
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 236
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 243
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 232
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 239
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 238
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 227
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 220
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 242
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 233
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 228
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 234
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 245
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 211
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 241
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 224
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 240
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 244
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 231
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 1
+[1] 21
+[1] 2
+[1] 41
+[1] 61
+[1] 22
+[1] 81
+[1] 42
+[1] 3
+[1] 10
+
+[1] 23
+[1] 121
+[1] 43
+[1] 82
+[1] 141
+[1] 102
+[1] 161
+[1] 122
+[1] 142
+[1] 63
+[1] 162
+[1] 83
+[1] 103
+[1] 123
+[1] 4
+[1] 143
+[1] 163
+[1] 24
+[1] 44
+[1] 64
+[1] 84
+[1] 5
+[1] 104
+[1] 124
+[1] 144
+[1] 164
+[1] 25
+[1] 181
+[1] 201
+[1] 45
+[1] 221
+[1] 65
+[1] 241
+[1] 85
+[1] 182
+[1] 202
+[1] 105
+[1] 222
+[1] 242
+[1] 125
+[1] 6
+[1] 145
+[1] 26
+[1] 183
+[1] 165
+[1] 203
+[1] 46
+[1] 223
+[1] 243
+[1] 66
+[1] 184
+[1] 204
+ 86
+[1] 224
+[1] 244
+[1] 7
+[1] 106
+[1] 126
+[1] 146
+[1] 166[1] 27
+[1] 47
+[1] 185
+[1] 8
+[1] 205
+[1] 67
+[1] 225
+[1] 245
+[1] 28
+[1] 87
+[1] 48
+[1] 107
+[1] 9
+[1] 127
+[1] 68
+[1] 29
+[1] 147
+[1] 88
+[1] 167
+[1] 108
+[1] 186
+[1] 49
+[1] 206
+[1] 128
+[1] 226
+[1] 148
+[1] 10
+[1] 168
+[1] 69
+[1] 30
+[1] 89
+[1] 109
+[1] 50
+[1] 129
+[1] 11
+[1] 70
+[1] 149
+[1] 90
+[1] 169
+[1] 110
+[1] 130
+[1] 31
+[1] 150
+[1] 51
+[1] 170
+[1] 71
+[1] 187
+[1] 91
+[1] 207
+[1] 12
+[1] 111
+[1] 227
+[1] 131
+[1] 151
+[1] 32
+[1] 171
+[1] 188
+[1] 208
+[1] 228
+[1] 52
+[1] 72
+[1] 189
+[1] 92
+[1] 209
+[1] 13
+[1] 229
+[1] 112
+[1] 132
+[1] 33
+[1] 190
+[1] 210
+[1] 53
+[1] 152
+[1] 230
+[1] 172
+[1] 73
+[1] 93
+[1] 113
+[1] 14
+[1] 133
+[1] 153
+[1] 191
+ 34
+[1] 211
+[1] 231
+[1] 54
+[1] 74
+[1] 94
+[1] 192
+[1] 114
+[1] 212
+[1] 134
+[1] 232
+[1] 154
+[1] 15
+[1] 35
+[1] 55
+[1] 16
+[1] 173
+[1] 75
+[1] 193
+[1] 213
+[1] 36
+[1] 233
+[1] 95
+[1] 115
+[1] 56
+[1] 135
+[1] 155
+[1] 17
+[1] 76
+[1] 96
+[1] 37
+[1] 116
+[1] 174
+[1] 136
+[1] 194
+[1] 214
+[1] 234
+[1] 156
+[1] 57
+[1] 77
+[1] 97
+[1] 117
+[1] 18
+[1] 137
+[1] 157
+[1] 38
+[1] 58
+[1] 175
+[1] 78
+[1] 195
+[1] 215
+[1] 235
+[1] 19
+[1] 98
+[1] 39
+[1] 118
+[1] 138
+[1] 59
+[1] 176
+[1] 158
+[1] 196
+[1] 216
+[1] 79
+[1] 236
+[1] 99
+[1] 119
+[1] 139
+[1] 159
+[1] 20
+[1] 40
+[1] 60
+[1] 80
+[1] 100
+[1] 120
+[1] 177
+[1] 140
+[1] 197
+[1] 217
+[1] 160
+[1] 237
+[1] 178
+[1] 198
+[1] 218
+[1] 238
+[1] 179
+[1] 199
+[1] 219
+[1] 239
+[1] 180
+[1] 200
+[1] 220
+[1] 240
+> 
+> GSEARoot = GSEA(GeneScoreRoot, "mean", 0.1, "Root", TOP = 50)
+[1] 1
+[1] 2
+[1] 3
+[1] 4
+[1] 5
+[1] 6
+[1] 7
+Checking arguments...[1] 8
+Checking arguments...[1] 9
+Checking arguments...[1] 10
+[1] 11
+[1] 12
+done!
+done!
+Calculating gene set statistics...[1] 13
+Calculating gene set statistics...[1] 14
+done!
+Calculating gene set statistics...Checking arguments...done!
+Calculating gene set significance...[1] 15
+Checking arguments...done!
+Calculating gene set significance...[1] 16
+done!
+Calculating gene set significance...Checking arguments...[1] 17
+Checking arguments...Checking arguments...[1] 18
+[1] 19
+[1] 20
+done!
+Calculating gene set statistics...done!
+Checking arguments...Calculating gene set statistics...done!
+Calculating gene set statistics...done!
+done!
+Calculating gene set statistics...Checking arguments...Checking arguments...Calculating gene set statistics...done!
+Calculating gene set significance...Checking arguments...Checking arguments...Checking arguments...Checking arguments...Checking arguments...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Calculating gene set statistics...Checking arguments...done!
+Calculating gene set significance...Checking arguments...done!
+Calculating gene set significance...done!
+Calculating gene set statistics...done!
+Checking arguments...Calculating gene set statistics...done!
+done!
+Calculating gene set statistics...Calculating gene set statistics...done!
+done!
+Calculating gene set statistics...Calculating gene set statistics...done!
+Calculating gene set significance...Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+done!
+Calculating gene set significance...done!
+Calculating gene set significance...Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+done!
+Calculating gene set significance...Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 24
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 21
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 22
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 40
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 28
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 36
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 27
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 35
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 29
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 25
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 33
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 23
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 37
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 26
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 34
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 31
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 32
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 38
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 30
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 48
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 41
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 39
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 44
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 42
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 55
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 47
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 75
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 60
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 61
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 46
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 56
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 43
+Checking arguments...done!
+Calculating gene set statistics...done!
+Adjusting for multiple testing...done!
+[1] 45
+done!
+Calculating gene set significance...Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 57
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 58
+Checking arguments...done!
+Adjusting for multiple testing...done!
+[1] 50
+done!
+Calculating gene set statistics...done!
+Calculating gene set significance...Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 49
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 68
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 52
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 51
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 54
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 59
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 62
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 53
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 76
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 66
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 95
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 80
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 67
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 64
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 81
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 65
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 71
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 77
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 72
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 63
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 78
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 79
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 88
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 86
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 70
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 82
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 69
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 74
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 115
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 96
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 84
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 87
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 73
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 91
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 83
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 100
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 85
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 135
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 92
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 98
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 101
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 106
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 108
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 97
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 90
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 99
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 155
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 94
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 104
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 89
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 107
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 102
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 103
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 111
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 93
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 120
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 116
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 128
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 118
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 105
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 121
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 117
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 110
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 112
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 126
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 119
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 175
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 114
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 127
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 109
+Checking arguments...done!
+Adjusting for multiple testing...done!
+[1] 136
+done!
+Calculating gene set statistics...done!
+Calculating gene set significance...Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 123
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 113
+done!
+Adjusting for multiple testing...done!
+[1] 124
+Checking arguments...Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 122
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 140
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 131
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 125
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 138
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 137
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 132
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 130
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 148
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 146
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 141
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 142
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 151
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 139
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 134
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 195
+Checking arguments...done!
+Adjusting for multiple testing...done!
+[1] 147
+done!
+Calculating gene set statistics...done!
+Calculating gene set significance...Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 144
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 129
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 160
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 152
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 143
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 133
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 156
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 149
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 158
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 145
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 162
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 157
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 168
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 166
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 163
+done!
+Adjusting for multiple testing...done!
+[1] 164
+Checking arguments...Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 150
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 161
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 172
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 171
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 167
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 180
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 159
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 154
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 184
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 153
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 169
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 182
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 178
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 188
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 192
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 165
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 187
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 186
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 176
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 183
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 177
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 181
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 174
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 170
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 173
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 185
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 179
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 191
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 189
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 190
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 194
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 196
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 197
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 193
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 1
+[1] 21
+[1] 41
+[1] 61
+[1] 81
+[1] 101
+[1] 121
+[1] 141
+[1] 2
+[1] 161
+[1] 22
+[1] 181
+[1] 42
+[1] 62
+[1] 82
+[1] 102
+[1] 122
+[1] 142
+[1] 162
+[1] 3
+[1] 182
+[1] 23
+[1] 43
+[1] 63
+[1] 83
+[1] 103
+[1] 123
+[1] 143
+[1] 163
+[1] 4
+[1] 183
+[1] 24
+[1] 44
+[1] 64
+[1] 84
+[1] 104
+[1] 124
+[1] 144
+[1] 5
+[1] 164
+[1] 25
+[1] 184
+[1] 45
+[1] 65
+[1] 85
+[1] 105
+[1] 125
+[1] 145
+[1] 165
+[1] 6
+[1] 185
+[1] 26
+[1] 46
+[1] 66
+[1] 86
+[1] 106
+[1] 126
+[1] 146
+[1] 166
+[1] 7
+[1] 186
+[1] 27
+[1] 47
+[1] 67
+[1] 87
+[1] 107
+[1] 127
+[1] 147
+[1] 8
+[1] 28
+[1] 167
+[1] 48
+[1] 68
+[1] 187
+[1] 88
+[1] 108
+[1] 128
+[1] 148
+[1] 9
+[1] 29
+[1] 168
+[1] 49
+[1] 188
+[1] 69
+[1] 89
+[1] 109
+[1] 129
+[1] 149
+[1] 169
+[1] 189
+[1] 10
+[1] 30
+[1] 50
+[1] 70
+[1] 90
+[1] 110
+[1] 130
+[1] 150
+[1] 11
+[1] 31
+[1] 170
+[1] 51
+ 190
+[1] 71
+[1] 91
+[1] 111
+[1] 131
+[1] 151
+[1] 12
+[1] 171
+[1] 191
+[1] 32
+[1] 52
+[1] 72
+[1] 92
+[1] 112
+[1] 132
+[1] 152
+[1] 172
+[1] 13
+[1] 192
+[1] 33
+[1] 53
+[1] 73
+[1] 93
+[1] 113
+[1] 14
+[1] 34
+[1] 133
+[1] 54
+[1] 74
+ 153
+[1] 94
+[1] 173
+[1] 193
+[1] 114
+[1] 134
+[1] 154
+[1] 174
+[1] 15
+[1] 35
+[1] 194
+[1] 55
+[1] 75
+[1] 95
+[1] 115
+[1] 135
+[1] 155
+[1] 175
+[1] 195
+[1] 16
+[1] 36
+[1] 56
+[1] 76
+[1] 96
+[1] 116
+[1] 136
+ 17
+[1] 37
+[1] 57
+[1] 156
+[1] 77
+[1] 176
+[1] 97
+[1] 196
+[1] 117
+[1] 137
+[1] 157
+[1] 18
+[1] 38
+[1] 58
+[1] 177
+[1] 78
+[1] 197
+[1] 98
+[1] 118
+[1] 138
+[1] 158
+[1] 178
+[1] 19
+[1] 39
+[1] 59
+[1] 79
+[1] 99
+[1] 119
+[1] 20
+[1] 40
+[1] 60
+[1] 139
+[1] 159
+[1] 179
+[1] 80
+[1] 100
+[1] 120
+[1] 140
+[1] 160
+[1] 180
+> GSEARootLeaf = GSEA(GeneScoreLeafRoot, "mean", 0.1, "Leaf", TOP = 50)
+[1] 1
+[1] 2
+[1] 3
+[1] 4
+[1] 5
+[1] 6
+[1] 7
+[1] 8
+Checking arguments...[1] 9
+[1] 10
+[1] 11
+[1] 12
+Checking arguments...[1] 13
+done!
+Checking arguments...Calculating gene set statistics...Checking arguments...[1] 14
+Checking arguments...Checking arguments...[1] 15
+[1] 16
+[1] 17
+[1] 18
+Checking arguments...Checking arguments...done!
+Calculating gene set significance...done!
+done!
+Calculating gene set statistics...Calculating gene set statistics...Checking arguments...[1] 19
+Checking arguments...[1] 20
+Checking arguments...done!
+Checking arguments...done!
+Calculating gene set statistics...Calculating gene set statistics...done!
+done!
+Calculating gene set significance...Calculating gene set statistics...done!
+done!
+Calculating gene set significance...Calculating gene set statistics...Checking arguments...Checking arguments...done!
+Calculating gene set significance...Checking arguments...Checking arguments...done!
+Calculating gene set statistics...Checking arguments...done!
+Calculating gene set significance...Checking arguments...done!
+Calculating gene set significance...done!
+done!
+Checking arguments...Calculating gene set statistics...Calculating gene set statistics...Checking arguments...done!
+done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...Calculating gene set statistics...done!
+Calculating gene set statistics...done!
+Calculating gene set statistics...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+done!
+Calculating gene set significance...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+done!
+Calculating gene set significance...Calculating gene set statistics...Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 32
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 27
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 26
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 24
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 36
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 40
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 22
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 39
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 35
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 34
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 31
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 28
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 37
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 30
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 25
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 29
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 23
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 33
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 38
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 21
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 52
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 59
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 60
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 54
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 44
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 42
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 46
+done!
+Adjusting for multiple testing...done!
+[1] 45
+Checking arguments...Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 56
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 50
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 48
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 57
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 55
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 47
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 43
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 49
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 51
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 58
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 53
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 41
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 80
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 62
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 74
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 64
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 79
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 65
+Checking arguments...done!
+Calculating gene set statistics...done!
+Adjusting for multiple testing...done!
+[1] 75
+done!
+Calculating gene set significance...Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 66
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 76
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 72
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 77
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 70
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 68
+Checking arguments...done!
+Adjusting for multiple testing...done!
+[1] 63
+done!
+Calculating gene set statistics...Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 78
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 69
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 61
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 73
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 67
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 71
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 95
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 82
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 84
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 86
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 94
+Checking arguments...done!
+done!
+Adjusting for multiple testing...done!
+Calculating gene set statistics...[1] 99
+done!
+Calculating gene set significance...Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 85
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 100
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 90
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 83
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 96
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 92
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 97
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 98
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 88
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 89
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 87
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 81
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 114
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 110
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 115
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 91
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 116
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 120
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 93
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 118
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 106
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 119
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 102
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 105
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 117
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 112
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 104
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 108
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 103
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 107
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 109
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 111
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 135
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 101
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 138
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 113
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 136
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 130
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 140
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 134
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 125
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 137
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 126
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 122
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 132
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 139
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 124
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 128
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 123
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 158
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 131
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 133
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 155
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 121
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 127
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 156
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 160
+Checking arguments...done!
+Adjusting for multiple testing...done!
+[1] 145
+done!
+Adjusting for multiple testing...done!
+[1] 150
+done!
+Calculating gene set statistics...Checking arguments...Checking arguments...done!
+Calculating gene set significance...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 129
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 142
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 154
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 152
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 146
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 148
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 144
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 159
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 157
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 178
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 176
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 175
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 143
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 153
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 151
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 147
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 141
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 149
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 162
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 165
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 170
+Checking arguments...done!
+Adjusting for multiple testing...done!
+[1] 174
+done!
+Calculating gene set statistics...Checking arguments...done!
+Calculating gene set significance...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 180
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 172
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 168
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 195
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 166
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 164
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 198
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 177
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 196
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 179
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 171
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 200
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 167
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 161
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 185
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 173
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 163
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 169
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 194
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 197
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 182
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 218
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 190
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 215
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 186
+done!
+Adjusting for multiple testing...done!
+[1] 192
+Checking arguments...Checking arguments...done!
+done!
+Calculating gene set statistics...Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 188
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 199
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 205
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 184
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 216
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 220
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 187
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 191
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 181
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 189
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 183
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 217
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 193
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 214
+Checking arguments...done!
+Adjusting for multiple testing...done!
+[1] 202
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 212
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 210
+Checking arguments...done!
+Calculating gene set statistics...done!
+Adjusting for multiple testing...done!
+[1] 225
+done!
+Calculating gene set significance...Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 206
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 219
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 204
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 208
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 207
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 209
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 201
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 211
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 222
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 203
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 213
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 221
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 228
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+[1] 226
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 227
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 224
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 223
+Checking arguments...done!
+Calculating gene set statistics...done!
+Calculating gene set significance...done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+done!
+Adjusting for multiple testing...done!
+[1] 1
+[1] 21
+[1] 41
+[1] 2
+[1] 61
+[1] 22
+[1] 81
+[1] 42
+[1] 101
+[1] 62
+[1] 121
+[1] 141 82
+[1] 3
+[1] 102
+[1] 23
+[1] 122
+[1] 161
+[1] 43
+[1] 181
+[1] 142
+[1] 201
+[1] 221
+[1] 162
+[1] 63
+[1] 83
+[1] 182
+[1] 103
+[1] 4
+ 202
+[1] 222
+[1] 24
+[1] 123
+[1] 143
+[1] 44
+[1] 64
+[1] 84
+[1] 163
+[1] 104
+[1] 124
+[1] 183
+[1] 5
+[1] 203
+[1] 144
+[1] 25
+[1] 223
+[1] 45
+[1] 164
+[1] 184
+[1] 204
+[1] 65
+[1] 224
+[1] 6
+[1] 85
+[1] 105
+[1] 125
+[1] 26
+[1] 46
+[1] 145
+[1] 66
+[1] 86
+[1] 165
+[1] 185
+[1] 106
+[1] 205
+[1] 225
+[1] 7
+[1] 126
+[1] 146
+[1] 27
+[1] 166
+[1] 186
+[1] 47
+[1] 206
+[1] 226[1] 67
+[1] 87
+[1] 107
+[1] 127
+[1] 8
+[1] 147
+[1] 28
+[1] 167
+[1] 187
+[1] 48
+[1] 207
+[1] 227
+[1] 68
+[1] 9
+[1] 88
+[1] 29
+[1] 108
+[1] 128
+[1] 49
+[1] 148
+[1] 69
+[1] 89
+[1] 109
+[1] 168
+[1] 10
+[1] 129
+[1] 188
+[1] 30
+[1] 149
+[1] 208
+[1] 50
+[1] 228
+[1] 70
+[1] 169
+[1] 90
+[1] 189
+[1] 110
+[1] 11
+[1] 209
+[1] 130
+[1] 31
+[1] 51
+[1] 150
+[1] 71
+[1] 170
+[1] 91
+[1] 190
+[1] 12
+[1] 210
+[1] 32
+[1] 111
+[1] 131
+[1] 52
+[1] 151
+[1] 13
+[1] 72
+[1] 171
+[1] 92
+[1] 33
+[1] 53
+[1] 191
+[1] 211
+[1] 73
+[1] 112
+[1] 14
+[1] 93
+[1] 132
+[1] 34
+[1] 152
+[1] 54
+[1] 113
+[1] 172
+[1] 74
+[1] 94
+[1] 192
+[1] 133
+[1] 212
+[1] 153
+[1] 173
+[1] 114
+[1] 193
+[1] 213
+[1] 15
+[1] 134
+[1] 154
+[1] 35
+[1] 174
+[1] 55
+[1] 194
+[1] 75
+[1] 214
+[1] 95
+[1] 115
+[1] 135
+[1] 16
+[1] 155
+[1] 36
+[1] 175
+[1] 195
+[1] 215
+[1] 56
+[1] 76
+[1] 96
+[1] 17
+[1] 116
+[1] 37
+[1] 136
+[1] 57
+[1] 77
+[1] 156
+[1] 176
+[1] 18
+[1] 196
+[1] 97
+[1] 216
+[1] 38
+[1] 58
+[1] 78
+[1] 117
+[1] 98
+[1] 137
+[1] 118
+[1] 157
+[1] 177
+[1] 138
+[1] 197
+[1] 19
+[1] 158
+[1] 217
+[1] 39
+[1] 178
+[1] 198
+[1] 59
+[1] 79
+[1] 218
+[1] 20
+[1] 99
+[1] 40
+[1] 60
+[1] 119
+[1] 80
+[1] 100
+[1] 139
+[1] 120
+[1] 159
+[1] 179
+[1] 199
+[1] 219
+[1] 140
+[1] 160
+[1] 180
+[1] 200
+[1] 220
+> 
+> 
+> write.table(rbind(GSEAPollen, GSEAPollenLeaf), file = "/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/Genes/SSD_GSEA_PollenLeaf_Top50_500.txt", row.names = F, quote = F , sep = "\t")
+> write.table(rbind(GSEARoot, GSEARootLeaf), file = "/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/Genes/SSD_GSEA_RootLeaf_Top50_500.txt", row.names = F, quote = F , sep = "\t")
+> 
+> 
+> 
+> 
+> #################################################################################################################################################################################
+> #  Heatmap and clustering on both row and column of GSEA matrix, columns are GO terms and rows are genes
+> #################################################################################################################################################################################
+> 
+> # library(gplots)
+> # library(made4)
+> # library(igraph)
+> # library(NMF)
+> # nmf.options(grid.patch=TRUE)
+> # # install.packages("pheatmap", repos = "http://lib.ugent.be/CRAN/")
+> # library(pheatmap)
+> # #1E3C5C
+> # PollenLeaf = read.delim("/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/Genes/Anchorpoint/GSEA_PollenLeaf_Top50_500.txt")
+> # RootLeaf = read.delim("/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/Genes/Anchorpoint/GSEA_RootLeaf_Top50_500.txt")
+> # RootLeafGO = merge(goMap, RootLeaf, by.x = "V2", by.y = "Name")[,c(1,3,6,7,8,9)]
+> # RootLeafGO = RootLeafGO[order(RootLeafGO$module),]
+> # PollenLeafGO = merge(goMap, PollenLeaf, by.x = "V2", by.y = "Name")[,c(1,3,6,7,8,9)]
+> # PollenLeafGO = PollenLeafGO[order(PollenLeafGO$module),]
+> # RootLeafGO["module"] = ifelse(RootLeafGO$module == "Leaf", "Root-Leaf", "Root")
+> # PollenLeafGO["module"] = ifelse(PollenLeafGO$module == "Leaf", "Pollen-Leaf", "Pollen")
+> # PollenRootLeafGO = rbind(PollenLeafGO, RootLeafGO)
+> # PollenRootLeaf = rbind(PollenLeaf, RootLeaf)
+> 
+> # PollenLeaf[PollenLeaf$Gene %in% unique(intersect(as.character(PollenLeaf$Gene), as.character(RootLeaf$Gene)))[i],]
+> # RootLeaf[RootLeaf$Gene %in% unique(intersect(as.character(PollenLeaf$Gene), as.character(RootLeaf$Gene)))[i],]
+> 
+> # # Function to convert GSEA output to a corresponding matrix in order to visualize it by heatmap and hirerchical clustering in the next setps
+> # Mydata = function(x, FDR) {
+> # 	x = x[x$p.adj..non.dir.. < FDR,]
+> # 	k = 0
+> # 	if (ncol(x) == 6) k = 1
+> # 	g = graph.edgelist(as.matrix(x[, c(1+k, 4+k)]), directed=TRUE)
+> # 	E(g)$weight = -log(x[, "p.adj..non.dir.."] + 0.00001)
+> # 	AJ = get.adjacency(g, attr="weight", sparse=F)
+> # 	Aj1 = AJ[,-c(which(colnames(AJ) %in% x[,1+k]))]
+> # 	mydata = Aj1[-c(which(rownames(Aj1) %in% x[,4+k])),]
+> # 	return(mydata)
+> # }
+> 
+> 
+> 
+> # ReorderMatrix = function(x) { 
+> # 	# set the custom distance and clustering functions, per your example
+> # 	hclustfunc <- function(x) hclust(x, method="ward.D2")
+> # 	distfunc <- function(x) dist(x, method="euclidean")
+> 
+> # 	# perform clustering on rows and columns
+> # 	cl.row <- hclustfunc(distfunc(t(mydata)))
+> # 	cl.col <- hclustfunc(distfunc(mydata))
+> # 	mydata = mydata[cl.col$order, cl.row$order]
+> # 	return(mydata)
+> # }
+> 
+> # # extract cluster assignments; i.e. k=8 (rows) k=5 (columns)
+> # gr.row <- cutree(cl.row, 8)
+> # gr.col <- cutree(cl.col, 8)
+> 
+> # # require(RColorBrewer)
+> # col1 <- brewer.pal(8, "Dark2")
+> # col2 <- brewer.pal(8, "Dark2")
+> 
+> 
+> # # jpeg("/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/GSEA_RootLeaf.jpeg", width = 13, height = 7, units = "in", res = 800, pointsize=8)
+> # # heatmap.2(t(mydata), hclustfun=hclustfunc, distfun=distfunc,
+> # # 	RowSideColors=col1[gr.row], ColSideColors=col2[gr.col], trace = "none", scale = NULL, keysize=0.7, srtCol=45, adjCol = c(1,0), col= colorpanel(5, "white", "black"),
+> # # 	sepcolor='yellow', sepwidth=0.05)
+> # # dev.off()
+> 
+> 
+> # Type = "Top50_500"
+> 
+> # mydata = Mydata(RootLeaf, 0.1)
+> # write.table(ReorderMatrix(mydata), file =paste("/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/GO/GSEA/GSEA_RootLeaf",Type,".txt", sep = ""), quote = F, sep = "\t")
+> # annotation = data.frame("Module" = ifelse(colnames(mydata) %in% AnchRoot$Root, "Root", "Leaf"), "Noverlap" = ifelse(colnames(mydata) %in% AnchRoot$Root & !(colnames(mydata) %in% Anch$Pollen), "Root",
+> # 	ifelse(colnames(mydata) %in% AnchRoot$Root & colnames(mydata) %in% Anch$Pollen, "Root-Pollen",
+> # 		ifelse(colnames(mydata) %in% AnchRoot$Leaf & colnames(mydata) %in% Anch$Leaf, "LeafLeaf", "Leaf"))))
+> # rownames(annotation) = colnames(mydata)
+> # # pdf("/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/GSEA_RootLeaf.pdf", width = 20, height = 15, pointsize=12)
+> # # aheatmap(t(mydata), color = c("white","black"), Rowv = TRUE, Colv = TRUE, labCol = NULL, distfun = "euclidean", hclustfun = "ward",
+> # # 	annRow = annotation, annColors = list(c("blue", "red")), cellwidth = 3, cellheight = 4, legend = TRUE)
+> # # dev.off()
+> 
+> 
+> 
+> # pheatmap(t(mydata), color = colorRampPalette(c("white", "black"))(10), clustering_distance_rows = "euclidean", clustering_distance_cols = "euclidean", clustering_method = "ward.D2",
+> # 	labCol = NULL, annotation_row = annotation, cellwidth = 3, cellheight = 4, legend = TRUE, fontsize_col = 3, fontsize_row = 4,
+> # 	border_color = NA, cutree_rows = 4, cutree_cols = 4, , annotation_colors = list(Module = c(Root = "darkblue", Leaf = "red"), Noverlap = c(Root = "darkblue", Leaf = "red", LeafLeaf = "green", "Root-Pollen" = "yellow")),
+> # 	filename = paste("/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/GO/GSEA/GSEA_RootLeaf",Type,".pdf", sep = ""))
+> 
+> 
+> # mydata = Mydata(PollenLeaf, 0.1)
+> # write.table(ReorderMatrix(mydata), file =paste("/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/GO/GSEA/GSEA_PollenLeaf",Type,".txt", sep = ""), quote = F, sep = "\t")
+> # annotation = data.frame("Module" = ifelse(colnames(mydata) %in% Anch$Pollen, "Pollen", "Leaf"), "Noverlap" = ifelse(!(colnames(mydata) %in% AnchRoot$Root) & colnames(mydata) %in% Anch$Pollen, "Pollen",
+> # 	ifelse(colnames(mydata) %in% AnchRoot$Root & colnames(mydata) %in% Anch$Pollen, "Root-Pollen",
+> # 		ifelse(colnames(mydata) %in% AnchRoot$Leaf & colnames(mydata) %in% Anch$Leaf, "LeafLeaf", "Leaf"))))
+> # rownames(annotation) = colnames(mydata)
+> # pheatmap(t(mydata), color = colorRampPalette(c("white", "black"))(10), clustering_distance_rows = "euclidean", clustering_distance_cols = "euclidean", clustering_method = "ward.D2",
+> # 	labCol = NULL, annotation_row = annotation, annotation_colors = list(Module = c(Pollen = "darkblue", Leaf = "red"), Noverlap = c(Pollen = "darkblue", Leaf = "red", LeafLeaf = "green", "Root-Pollen" = "yellow")), cellwidth = 3, cellheight = 4, legend = TRUE, fontsize_col = 3, fontsize_row = 4,
+> # 	border_color = NA, cutree_rows = 5, cutree_cols = 5,
+> # 	filename = paste("/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/GO/GSEA/GSEA_PollenLeaf",Type,".pdf", sep = ""))
+> 
+> 
+> # mydata = Mydata(PollenRootLeafGO, 0.1)
+> # write.table(ReorderMatrix(mydata), file =paste("/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/GO/GSEA/GSEA_PollenRootLeafGO",Type,".txt", sep = ""), quote = F, sep = "\t")
+> # annotation = data.frame("Module" = factor(ifelse(colnames(mydata) %in% Anch$Pollen, "Pollen", ifelse(colnames(mydata) %in% AnchRoot$Root, "Root", ifelse(colnames(mydata) %in% AnchRoot$Leaf, "Root-Leaf", "Pollen-Leaf")))))
+> # rownames(annotation) = colnames(mydata)
+> # pheatmap(t(mydata), color = colorRampPalette(c("white", "black"))(10), clustering_distance_rows = "euclidean", clustering_distance_cols = "euclidean", clustering_method = "ward.D2",
+> # 	labCol = NULL, annotation_row = annotation, annotation_colors = list(Module = c(Pollen = "darkblue", Root = "red", "Root-Leaf" = "green", "Pollen-Leaf" ="yellow")), cellwidth = 3, cellheight = 4, legend = TRUE, fontsize_col = 3, fontsize_row = 4,
+> # 	border_color = NA, cutree_rows = 6, cutree_cols = 6,
+> # 	filename = paste("/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/GO/GSEA/GSEA_PollenRootLeafGO",Type,".pdf", sep = ""))
+> 
+> 
+> # mydata = Mydata(PollenRootLeaf, 0.05)
+> # write.table(ReorderMatrix(mydata), file =paste("/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/GO/GSEA/GSEA_PollenRootLeaf",Type,".txt", sep = ""), quote = F, sep = "\t")
+> # annotation = data.frame("Module" = ifelse(colnames(mydata) %in% Anch$Pollen, "Pollen", ifelse(colnames(mydata) %in% AnchRoot$Root, "Root", ifelse(colnames(mydata) %in% AnchRoot$Leaf, "Root-Leaf", "Pollen-Leaf"))))
+> # rownames(annotation) = colnames(mydata)
+> # pheatmap(t(mydata), color = colorRampPalette(c("white", "black"))(10), clustering_distance_rows = "euclidean", clustering_distance_cols = "euclidean", clustering_method = "ward.D2",
+> # 	labCol = NULL, annotation_row = annotation, annotation_colors = list(Module = c(Pollen = "darkblue", Root = "red", "Root-Leaf" = "green", "Pollen-Leaf" ="yellow")), cellwidth = 3, cellheight = 4, legend = TRUE, fontsize_col = 3, fontsize_row = 4,
+> # 	border_color = NA, cutree_rows = 6, cutree_cols = 7, annotation_col = annotationCol,
+> # 	filename = paste("/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/GO/GSEA/GSEA_PollenRootLeaf",Type,".pdf", sep = ""))
+> 
+> 
+> 
+> # G1 = rownames(mydata)[1:14]
+> # G2 = rownames(mydata)[15:16]
+> # G3 = rownames(mydata)[17:24]
+> # G4 = rownames(mydata)[25:55]
+> # G5 = rownames(mydata)[602:619]
+> # G6 = rownames(mydata)[590:601]
+> 
+> # GG = rbind(data.frame("GOTerms" = rownames(mydata)[1:14], "Group" = "G1"),
+> # 	data.frame("GOTerms" = rownames(mydata)[15:16], "Group" = "G2"),
+> # 	data.frame("GOTerms" = rownames(mydata)[17:24], "Group" = "G3"),
+> # 	data.frame("GOTerms" = rownames(mydata)[25:55], "Group" = "G4"),
+> # 	data.frame("GOTerms" = rownames(mydata)[602:619], "Group" = "G5"),
+> # 	data.frame("GOTerms" = rownames(mydata)[590:601], "Group" = "G6")
+> # 	)
+> 
+> # UU = rbind(GG, data.frame("GOTerms" = setdiff(rownames(mydata), as.character(GG$GOTerms)), "Group" = "Other"))
+> # annotationCol = data.frame(UU[,2])
+> # rownames(annotationCol) = as.character(UU$GOTerms)
+> # colnames(annotationCol) = "GO Groups"
+> 
+> 
+> # GOO = matrix(0, ncol(mydata), length(table(GG$Group)))
+> # rownames(GOO) = colnames(mydata)
+> # colnames(GOO) = names(table(GG$Group))
+> 
+> 
+> # for(i in 1:ncol(mydata)) {
+> # 	GOO[colnames(mydata)[i],unique(as.character(GG$Group[GG$GOTerms %in% rownames(mydata)[mydata[,i] > 0]]))] = 1
+> # }
+> 
+> # GG1 = data.frame("G1" = 0, "G2" = 0, "G3" = 0, "G4" = 0, "G5" = 0, "G6" = 0)
+> # rownames(GG1) = "AT3G59440"
+> # GOO = rbind(GOO, GG1)
+> # RandomForest = function(data, x, y, namex, namey, Top, address, classes, title) {
+> # 	if(classes == 2) Data = data.frame(rbind.data.frame(data[x,], data[y,]), "class" = c(rep(namex, length(x)), rep(namey, length(y))))
+> # 	if(classes > 2) Data = data
+> # 	Result = randomForest(factor(class) ~ ., data = Data, ntrees = 20000)
+> # 	if(classes == 2) Var = data.frame(colnames(data), varUsed(Result))
+> # 	if(classes > 2) Var = data.frame(colnames(data[, -ncol(data)]), varUsed(Result))
+> # 	Var = Var[order(-Var[,2]),]
+> # 	# Erro = PollenLeaf$err.rate[500,1]
+> # 	# myImagePlot_sym(Data[,as.numeric(rownames(Var[1:Top,]))])
+> 
+> # 	annotationRow = data.frame("Module" = Data$class)
+> # 	rownames(annotationRow) = rownames(Data)
+> # 	annotationRow = cbind(annotationRow, rbind(GOO[x,], GOO[y,]))
+> # 	ColorRamp = rgb(seq(0,1,length=256),seq(0,1,length=256),seq(1,0,length=256))
+> # 	ColorLevels = seq(-max(abs(Data[,-ncol(Data)])), max(abs(Data[,-ncol(Data)])), length=length(ColorRamp)+1)
+> # 	selected = Data[,as.numeric(rownames(Var[1:Top,]))]
+> # 	Col.n = GSM = c()
+> # 	for(i in 1:Top) {
+> # 		col.n = COR.annot.PO[names(COR.annot.PO) %in% Annot(colnames(selected)[i])][[1]]
+> # 		Col.n[i] = ifelse(length(col.n) == 1, col.n,
+> # 			ifelse(length(col.n) == 2, paste(col.n[1], col.n[2], sep = " | "),
+> # 				ifelse(length(col.n) == 3, paste(col.n[1], col.n[2], col.n[3], sep = " | "), colnames(selected)[i])))
+> # 		GSM[i] = COR.annot.GSM[names(COR.annot.GSM) %in% Annot(colnames(selected)[i])][[1]]
+> # 	}
+> # 	# RR = data.frame(Col.n, "A" = unlist(COR.annot.GSM[names(COR.annot.GSM) %in% Annot(colnames(selected))]))
+> # 	RR = data.frame(Col.n, GSM)
+> # 	RR = paste(RR[,1], RR[,2], sep = " * ")
+> # 	colnames(selected) = RR
+> # 	pheatmap(selected, cluster_row = F, clustering_method="ward.D2", annotation_row = annotationRow, border_color=NA, cluster_col = T,
+> # 		color = ColorRamp, breaks = ColorLevels, treeheight_col = 0,  fontsize = 5, main = title, filename = address,
+> # 		cellwidth = 6, cellheight = 5, fontsize_col = 5, fontsize_row = 5,  gaps_row = cumsum(table(factor(annotationRow[,1], levels = as.character(unique(annotationRow[,1]))))))
+> # 	return(selected)
+> # }
+> 
+> 
+> 
+> 
+> # PollenLeaf = RandomForest(classes = 2, data.exp.scale, as.character(AnchPollen$Pollen), as.character(AnchPollen$Leaf), "Pollen", "Leaf", 50,
+> # 	title = "Pollen - Leaf modules", 
+> # 	address = "/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/Plot/Anchorpoint/RFTop10/TopConditionsPollenRF1.pdf")
+> 
+> # RootLeaf = RandomForest(classes = 2, data.exp.scale, as.character(AnchRoot$Root), as.character(AnchRoot$Leaf), "Root", "Leaf", 50,
+> # 	title = "Root - Leaf modules", 
+> # 	address = "/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/Plot/Anchorpoint/RFTop10/TopConditionsRootRF1.pdf")
+> 
+> 
+> 
+> 
+> 
+> 
+> 
+> 
+> 
+> # # Extracting clusters both for anchotpoints and GO enriched terms
+> # # For Root-leaf module
+> # # Anch.clusters = as.data.frame(gr.row)
+> # # Anch.clusters["gr.row"] = ifelse(gr.row == 7 , "brown", ifelse(gr.row == 6 , "yellow", ifelse(gr.row == 5, "lightgreen", ifelse(gr.row == 4, "Pink", ifelse(gr.row == 3, "purple", ifelse(gr.row == 2, "orange", ifelse(gr.row == 1, "darkgreen", "gray")))))))
+> # # Anch.clusters["gr.row"] = ifelse(gr.row == 5, "lightgreen", ifelse(gr.row == 4, "Pink", ifelse(gr.row == 3, "purple", ifelse(gr.row == 2, "orange", "darkgreen"))))
+> # # GSEA = data.frame("Cluster" = ifelse(gr.col == 1, "darkgreen", ifelse(gr.col == 2, "orange", ifelse(gr.col == 3, "purple", ifelse(gr.col == 4, "pink", ifelse(gr.col == 5, "lightgreen", ifelse(gr.col == 6 , "yellow", ifelse(gr.col == 7 , "brown", "gray"))))))))
+> # # Anch.clusters["module"] = "Root"
+> # # Anch.clusters["module"] = "Pollen"
+> # # Anch.clusters[rownames(Anch.clusters) %in% as.character(Anch$Leaf), "module"] = "Leaf"
+> # # Anch.clusters["Anchorpoint"] = rownames(Anch.clusters)
+> # # table(Anch.clusters$module, Anch.clusters$gr.row)
+> # # write.table(Anch.clusters, file = "/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/GO/GSEA/APsRootLeaf.txt", row.names = F, quote = F, sep = "\t")
+> # # write.table(GSEA, file = "/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/GO/GSEA/GSEARootLeaf.txt", row.names = T, quote = F, sep = "\t")
+> 
+> 
+> 
+> 
+> 
+> 
+> # goExp = go[go$V5 %in% c("IDA","IEP","IPI","IMP","IGI"),]
+> 
+> 
+> # PollenGene = as.character(unique(PollenLeaf$Gene))
+> 
+> 
+> # pollenleaf = foreach (i = 1:length(PollenGene), .combine = rbind) %do% {
+> # 	x = as.character(goExp[goExp$V1 %in% PollenGene[i], "V2"])
+> # 	y = PollenLeaf[PollenLeaf$Gene %in% PollenGene[i], "Name"]
+> # 	Int = intersect(x, y)
+> # 	GOterm = "NA"
+> # 	if(length(x) > 0 & length(Int) == 0) GOterm = paste(x, collapse=" | ")
+> # 	if(length(x) > 0 & length(Int) > 0) GOterm = paste(c(paste(Int, "*", sep = ""), setdiff(x, Int)), collapse= " | ")
+> # 	data.frame("Gene" = PollenGene[i], "EXP_GO" = length(x), "GSEA" = length(y),
+> # 		"Jaccard" = length(intersect(x, y))/length(union(x, y)), "Module" = as.character(PollenLeaf[PollenLeaf$Gene %in% PollenGene[i], "module"][1]), "EXPGOterm" = GOterm)
+> # }
+> 
+> # sum(pollenleaf[pollenleaf$Exp > 0, "Jaccard"] > 0)/length(pollenleaf[pollenleaf$Exp > 0, "Jaccard"])
+> 
+> # write.table(pollenleaf, file = "/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/GO/GSEA/Overlap_GSEA_EXP_PollenLeaf.txt", row.names = F, sep = "\t", quote = F)
+> 
+> 
+> # PollenGene = as.character(unique(RootLeaf$Gene))
+> # rootleaf = foreach (i = 1:length(PollenGene), .combine = rbind) %do% {
+> # 	x = goExp[goExp$V1 %in% PollenGene[i], "V2"]
+> # 	y = RootLeaf[RootLeaf$Gene %in% PollenGene[i], "Name"]
+> # 	Int = intersect(x, y)
+> # 	GOterm = "NA"
+> # 	if(length(x) > 0 & length(Int) == 0) GOterm = paste(x, collapse=" | ")
+> # 	if(length(x) > 0 & length(Int) > 0) GOterm = paste(c(paste(Int, "*", sep = ""), setdiff(x, Int)), collapse= " | ")
+> # 	data.frame("Gene" = PollenGene[i], "Exp" = length(x), "GSEA" = length(y),
+> # 		"Jaccard" = length(intersect(x, y))/length(union(x, y)), "Module" = as.character(RootLeaf[RootLeaf$Gene %in% PollenGene[i], "module"][1]), "EXPGOterm" = GOterm)
+> # }
+> 
+> # sum(rootleaf[rootleaf$Exp > 0, "Jaccard"] > 0)/length(rootleaf[rootleaf$Exp > 0, "Jaccard"])
+> # nrow(rootleaf[rootleaf$Exp > 0 & rootleaf$Module == "Root" & rootleaf$Jaccard > 0, ])
+> 
+> 
+> # write.table(rootleaf, file = "/scratch/iwt/ehsab/Gene_duplication/Results/SA/Compare_SA__permut_thresold/development/GO/GSEA/Overlap_GSEA_EXP_RootLeaf.txt", row.names = F, sep = "\t", quote = F)
+> 
+> 
