@@ -1,0 +1,38 @@
+
+R version 2.15.1 (2012-06-22) -- "Roasted Marshmallows"
+Copyright (C) 2012 The R Foundation for Statistical Computing
+ISBN 3-900051-07-0
+Platform: x86_64-unknown-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> a=read.table("~/prioritization/Combined_Network/New/Indivitual_Networks/Mutant.txt")
+> a=as.matrix(a)
+> a=rbind(a,matrix(c(27376,27376),1,2)) ##
+>   library(Matrix)
+>   a=sparseMatrix(a[,1],a[,2],x=1)
+>   a[dim(a)[1],dim(a)[1]]=0
+>   library(igraph)
+>   a=a+t(a)
+>   a1=graph.adjacency(a,mode=c("undirected"))
+>   graph.density(a1)
+[1] 0.0003797587
+>   transitivity(a1, type=c("global"))
+[1] 0.003483693
+>   diameter(a1, directed = F, unconnected = T)
+[1] 6
+>   average.path.length(a1, directed=F, unconnected=TRUE)
+[1] 2.608403
+> 
